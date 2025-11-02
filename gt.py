@@ -1,5 +1,5 @@
 # ==============================================================
-# Giffler-Thompson-Algorithmus (KOZ-Regel)
+# Giffler-Thompson-Algorithmus (KOZ-Regel) a
 # ==============================================================
 # Ziel: Erstelle einen Job-Shop-Plan mit Start- und Endzeiten aller Operationen.
 # Ausgabe: Eine einfache Tabelle mit Job, Operation, Maschine, Start und Ende.
