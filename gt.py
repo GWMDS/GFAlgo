@@ -4,14 +4,11 @@
 # Ziel: Erstelle einen Job-Shop-Plan mit Start- und Endzeiten aller Operationen.
 # Ausgabe: Eine einfache Tabelle mit Job, Operation, Maschine, Start und Ende.
 # ==============================================================
-# >> Kommentar-/Dokublöcke: dienen nur der Beschreibung; haben keinen Programmeffekt.
-
 # --------------------------------------------------------------
 # Eingabedaten: Definition der Jobs mit Reihenfolge der Operationen
 # --------------------------------------------------------------
 # Jeder Job hat eine Liste von Operationen. Jede Operation besteht aus:
 # (Maschine, Bearbeitungszeit)
-# >> Auch das sind nur erklärende Kommentare.
 jobs = {
     1: [(1, 2), (2, 5), (3, 4)],  # Job 1: 3 Operationen
     2: [(2, 2), (3, 3), (1, 5)],  # Job 2: 3 Operationen
@@ -56,8 +53,6 @@ for j in jobs:
         # >> Setze für jede Operation die initiale Startschranke auf 0 (keine Wartepflicht).
 # Beispiel-Inhalt:
 # {(1,0):0, (1,1):0, (1,2):0, (2,0):0, (2,1):0, (2,2):0, (3,0):0, (3,1):0, (3,2):0}
-# >> Dieser Kommentar zeigt exemplarisch, wie 't' jetzt aussieht.
-
 # --------------------------------------------------------------
 # Speicher für Start- und Endzeiten der geplanten Operationen
 # --------------------------------------------------------------
@@ -114,20 +109,17 @@ while S:
     K = []
     # >> Leere Konfliktliste K.
     for j, i in S:
-        # >> Prüfe alle aktuell planbaren Operationen.
-        if jobs[j][i][0] == mach_min and t[(j, i)] < dmin:
+        # >> Prüfe alle aktuell planbaren Operationen. [0]>> greift auf den ersten tupel wert von jobs zu (1,2)--> 1 (Maschine)
+        if jobs[j][i][0] == mach_min and t[(j, i)] < dmin: #prüft ob operation auf gleicher maschine läuft und ob es zu Überlappung kommt
             K.append((j, i))
-            # >> Kriterium: gleiche Maschine wie omin **und** deren t[(j,i)] < dmin.
-            # >> Das sind diejenigen, die zeitlich „in Konflikt kommen könnten“.
     # Beispiel: [(1,0), (3,1)] wenn sie dieselbe Maschine brauchen
-    # >> Nur Kommentar-Beispiel.
 
     # ----------------------------------------------------------
     # Schritt 4: Wähle aus K nach KOZ-Regel
     # ----------------------------------------------------------
     # KOZ = kürzeste Operationszeit
-    o_bar = min(K, key=lambda o: jobs[o[0]][o[1]][1])
-    # >> Wähle aus der Konfliktmenge die Operation mit **kürzester Bearbeitungszeit** (KOZ).
+    o_bar = min(K, key=lambda o: jobs[o[0]][o[1]][1])# -> Jobnummer, Operationsindex, Bearbeitungszeit| lambda o ruft jedes Element von K auf
+    
     job_bar, i_bar = o_bar
     # >> Zerlege die Auswahl in Job und OpIndex.
     mach_bar, p_bar = jobs[job_bar][i_bar]
