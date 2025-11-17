@@ -119,7 +119,7 @@ while any(any(op["start"] is None for op in ops) for ops in jobs.values()): #Pr√
 
             if prev_start is not None:
                 raw_dev = abs(prev_start - start_time) #absolute Abweichung berechnen
-                deviation = raw_dev ** 2      #Quadratische Abweichungsstrafe
+                deviation = raw_dev ** 2      #Quadratische Abweichungsstrafe ^2
             else:
                 deviation = float('inf') #jobs werden nur gew√§hlt wenn es keine andere Wahl gibt
 
@@ -195,7 +195,7 @@ for s in schedule:
 
 ax.set_xlabel("Zeit")
 ax.set_ylabel("Maschinen")
-ax.set_title("Giffler-Thompson mit quadratischer DEVIATION_INSERT")
+ax.set_title("Giffler-Thompson mit quadratischer DEVIATION")
 ax.grid(True, axis='x', linestyle='--', alpha=0.6)
 plt.tight_layout()
 
