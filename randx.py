@@ -52,15 +52,7 @@ with open(routing_file, mode="w", newline="") as file:
                 new_machine = random.choice(machines)
                 new_pt = random.randint(processing_time_min, processing_time_max)
 
-                # alten Wert abrufen (falls vorhanden)
-                if job_id in old_data and op_id in old_data[job_id]:
-                    old_machine = old_data[job_id][op_id]["Machine"]
-                    old_pt = old_data[job_id][op_id]["Processing Time"]
-                else:
-                    old_machine = None
-                    old_pt = None
-
-                changed_ops.append([job_id, op_id, new_machine, old_pt, new_pt])
+                changed_ops.append([job_id, op_id, new_machine, new_pt])
                 machine = new_machine
                 processing_time = new_pt
 
@@ -81,7 +73,7 @@ with open(routing_file, mode="w", newline="") as file:
 # ================================
 with open(changes_file, mode="w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow(["Routing_ID", "Operation", "Machine", "Old Processing Time", "New Processing Time"])
+    writer.writerow(["Routing_ID", "Operation", "Machine", "New Processing Time"])
     writer.writerows(changed_ops)
 
 print(f"Routing-Datei '{routing_file}' erfolgreich aktualisiert.")
