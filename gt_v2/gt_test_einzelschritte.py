@@ -12,7 +12,7 @@ import math
 CSV_FILE = Path("routing.csv")
 PREVIOUS_SCHEDULE_FILE = Path("previous_schedule.json")
 
-print("--- Minimalinvasives Scheduling (Simulations-Modus) ---")
+print("--- Minimalinvasives Scheduling (Delay-Only Modus) ---")
 try:
     sig_in = input("Bitte Simulationsstreuung (Sigma) eingeben (Standard 0.0, z.B. 0.2): ")
     SIGMA = float(sig_in) if sig_in.strip() else 0.0
@@ -21,16 +21,28 @@ except ValueError:
     SIGMA = 0.0
 
 print(f"-> Starte Planung mit Sigma = {SIGMA}")
+print("-> Bedingung aktiv: Ist-Zeit >= Plan-Zeit (Keine Verfrühung möglich)")
 
 # ==============================================================
 # HILFSFUNKTIONEN
 # ==============================================================
 def simulate_duration(planned_duration, sigma):
+    """
+    Simuliert die Dauer.
+    Garantie: Die simulierte Dauer ist NIEMALS kürzer als die geplante Dauer.
+    """
     if sigma <= 0: return planned_duration
+    
+    # 1. Zufallsfaktor berechnen
     mu = -(sigma**2) / 2
     factor = random.lognormvariate(mu, sigma)
+    
+    # 2. Zeit berechnen
     actual = int(round(planned_duration * factor))
-    return max(1, actual)
+    
+    # 3. Constraint: Maximum aus (Plan, Ist) nehmen
+    # Das verhindert, dass Jobs schneller werden.
+    return max(planned_duration, actual)
 
 # ==============================================================
 # 1. DATEN LADEN
@@ -45,29 +57,29 @@ df.columns = [c.strip() for c in df.columns]
 
 # Vorherigen Plan laden
 prev_starts = {} 
-prev_schedule_by_machine = {} # Neu: Für Sequenzabweichung
+prev_schedule_by_machine = {} 
+prev_makespan = 0 
 has_prev_plan = False
 
 if PREVIOUS_SCHEDULE_FILE.exists():
     try:
         with open(PREVIOUS_SCHEDULE_FILE, "r") as f:
             data = json.load(f)
-            # Daten sortieren nach Startzeit, um Reihenfolge zu haben
             data.sort(key=lambda x: x["start"])
             
+            if data:
+                prev_makespan = max(d["end"] for d in data)
+            
             for entry in data:
-                # Startzeit merken
                 prev_starts[(entry["job"], entry["op"])] = entry["start"]
                 
-                # Für Sequenzabweichung: Liste pro Maschine aufbauen
                 m = entry["machine"]
                 if m not in prev_schedule_by_machine:
                     prev_schedule_by_machine[m] = []
-                # Wir speichern nur das Tupel (Job, Op) in der korrekten Reihenfolge
                 prev_schedule_by_machine[m].append((entry["job"], entry["op"]))
                 
         has_prev_plan = True
-        print(f"Alten Plan geladen ({len(prev_starts)} Ops). Strategie: STABILITÄT")
+        print(f"Alten Plan geladen ({len(prev_starts)} Ops). Makespan war: {prev_makespan}")
     except:
         print("Alter Plan defekt. Strategie: INITIAL (KOZ)")
 else:
@@ -86,8 +98,9 @@ for _, row in df.iterrows():
     
     simulated_pt = simulate_duration(planned_pt, SIGMA)
     
-    if planned_pt != simulated_pt:
-        print(f"Job {job_id} Op {op_id}: Plan={planned_pt} -> Ist={simulated_pt}")
+    # Info-Ausgabe nur bei Verzögerung
+    if simulated_pt > planned_pt:
+        print(f"Verzögerung! Job {job_id} Op {op_id}: {planned_pt} -> {simulated_pt}")
 
     if job_id not in jobs: jobs[job_id] = []
     
@@ -191,10 +204,10 @@ while True:
     })
 
 # ==============================================================
-# 3. METRIKEN: STARTZEIT- & SEQUENZABWEICHUNG
+# 3. METRIKEN
 # ==============================================================
 
-# 3.1 Startzeitabweichung (Nervosität)
+# 3.1 Startzeitabweichung
 time_dev_sum = 0
 comparable_count = 0
 for s in scheduled_ops_list:
@@ -205,119 +218,92 @@ for s in scheduled_ops_list:
 
 # 3.2 Sequenzabweichung
 seq_dev_count = 0
-
-# Zuerst: Den neuen Plan nach Maschinen sortieren
 new_schedule_by_machine = {}
-scheduled_ops_list.sort(key=lambda x: (x["machine"], x["start"])) # Wichtig!
+scheduled_ops_list.sort(key=lambda x: (x["machine"], x["start"])) 
 
 for s in scheduled_ops_list:
     m = s["machine"]
     if m not in new_schedule_by_machine: new_schedule_by_machine[m] = []
     new_schedule_by_machine[m].append((s["job"], s["op"]))
 
-# Jetzt vergleichen wir Maschine für Maschine
 for m in new_schedule_by_machine:
     if m not in prev_schedule_by_machine:
-        continue # Maschine war im alten Plan nicht belegt oder existierte nicht
-        
+        continue
     old_seq = prev_schedule_by_machine[m]
     new_seq = new_schedule_by_machine[m]
-    
-    # Wir betrachten nur Operationen, die in BEIDEN Plänen vorkommen (Schnittmenge)
     common_ops = set(old_seq) & set(new_seq)
-    
-    # Listen filtern, sodass nur gemeinsame Ops übrig bleiben (Reihenfolge bleibt erhalten)
     old_filtered = [op for op in old_seq if op in common_ops]
     new_filtered = [op for op in new_seq if op in common_ops]
     
-    # Inversionen zählen: Wie viele Paare (A, B) haben ihre Reihenfolge getauscht?
-    # Wir iterieren durch alle Paare in der alten Liste
-    current_machine_swaps = 0
     for i in range(len(old_filtered)):
         for j in range(i + 1, len(old_filtered)):
-            op_a = old_filtered[i] # A war vor B im alten Plan
+            op_a = old_filtered[i] 
             op_b = old_filtered[j]
-            
-            # Wo sind sie im neuen Plan?
-            idx_a_new = new_filtered.index(op_a)
-            idx_b_new = new_filtered.index(op_b)
-            
-            # Wenn jetzt A NACH B kommt (Index A > Index B), haben wir eine Vertauschung
-            if idx_a_new > idx_b_new:
-                current_machine_swaps += 1
-                
-    seq_dev_count += current_machine_swaps
+            if new_filtered.index(op_a) > new_filtered.index(op_b):
+                seq_dev_count += 1
+
+# 3.3 Makespan Abweichung
+current_makespan = max(s['end'] for s in scheduled_ops_list)
+makespan_diff = 0
+makespan_diff_text = ""
+
+if has_prev_plan:
+    makespan_diff = current_makespan - prev_makespan
+    prefix = "+" if makespan_diff > 0 else ""
+    makespan_diff_text = f" (Diff: {prefix}{makespan_diff})"
 
 # ==============================================================
-# 4. OUTPUT & SPEICHERN & VISUALISIERUNG
+# 4. OUTPUT & VISUALISIERUNG
 # ==============================================================
 
 print(f"\n--- ERGEBNIS (Sigma: {SIGMA}) ---")
-print(f"Makespan: {max(s['end'] for s in scheduled_ops_list)}")
-print(f"Startzeitabweichung (Summe): {time_dev_sum} min")
-print(f"Sequenzabweichung (Swaps):   {seq_dev_count}")
+print(f"Makespan Aktuell:      {current_makespan}{makespan_diff_text}")
+print(f"Startzeitabweichung:   {time_dev_sum} min")
+print(f"Sequenzabweichung:     {seq_dev_count}")
 
-# Speichern für nächsten Lauf
 scheduled_ops_list.sort(key=lambda x: (x["machine"], x["start"]))
 with open(PREVIOUS_SCHEDULE_FILE, "w") as f:
     json.dump(scheduled_ops_list, f, indent=4)
 
-# --------------------------------------------------------------
-# PLOT MIT LEGENDE
-# --------------------------------------------------------------
-import matplotlib.patches as mpatches # Wichtig für die Legende!
-
-fig, ax = plt.subplots(figsize=(14, 8)) # Etwas höher machen für Platz unten
+# Plot
+fig, ax = plt.subplots(figsize=(14, 8)) 
 colors = plt.cm.tab20.colors
 
-# Wir sammeln alle vorkommenden Jobs für die Legende
 unique_jobs_in_schedule = set()
 
 for s in scheduled_ops_list:
     unique_jobs_in_schedule.add(s["job"])
-    
-    # Farbe bestimmen (Modulo 20, damit es sich bei >20 Jobs wiederholt)
     col = colors[(s["job"]-1) % 20]
-    
-    # Balken zeichnen
     ax.barh(f"M {s['machine']}", s['end']-s['start'], left=s['start'], 
             color=col, edgecolor='black', alpha=0.9)
     
-    # Text im Balken (Job ID)
-    # Nur anzeigen, wenn der Balken breit genug ist (sonst wird es unleserlich)
     if (s['end'] - s['start']) > 2: 
         ax.text(s['start']+(s['end']-s['start'])/2, f"M {s['machine']}", 
                 f"J{s['job']}", ha='center', va='center', 
                 color='white', fontweight='bold', fontsize=8)
     
-    # Rote Linie für alte Position (Abweichung visualisieren)
     ps = get_prev_start(s["job"], s["op"])
     if ps is not None and ps != s["start"]:
         idx = machine_ids.index(s["machine"])
         ax.plot([ps, ps], [idx-0.4, idx+0.4], color='red', lw=2, ls='--')
 
-# --- LEGENDE ERSTELLEN ---
+# Legende
 legend_patches = []
 sorted_jobs = sorted(list(unique_jobs_in_schedule))
-
 for j_id in sorted_jobs:
     c = colors[(j_id - 1) % 20]
-    # Erstelle ein farbiges Rechteck für die Legende
     patch = mpatches.Patch(color=c, label=f"Job {j_id}")
     legend_patches.append(patch)
 
-# Legende unter dem Diagramm platzieren
-# bbox_to_anchor=(x, y): 0.5 ist mitte horizontal, -0.15 ist unter der x-Achse
-# ncol: Anzahl der Spalten (damit es nicht eine ewig lange Liste wird)
 ax.legend(handles=legend_patches, loc='upper center', 
           bbox_to_anchor=(0.5, -0.12), ncol=10, frameon=False, fontsize=10)
 
 ax.set_xlabel("Zeit")
 ax.set_ylabel("Maschinen")
-ax.set_title(f"Plan (Sigma={SIGMA}) | Start-Dev: {time_dev_sum} | Seq-Dev: {seq_dev_count}")
+title_str = (f"Plan (Sigma={SIGMA}, nur Delays) | Start-Dev: {time_dev_sum} | "
+             f"Seq-Dev: {seq_dev_count} | Makespan: {current_makespan}{makespan_diff_text}")
+ax.set_title(title_str)
 ax.grid(True, axis='x', linestyle='--', alpha=0.5)
-
-# Layout anpassen, damit die Legende nicht abgeschnitten wird
 plt.subplots_adjust(bottom=0.2) 
 
 plt.savefig(f"plan_seq_{SIGMA}.png", dpi=300)
